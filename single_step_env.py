@@ -8,9 +8,10 @@ from tinker_cookbook import renderers
 from tinker_cookbook.completers import StopCondition
 from tinker_cookbook.recipes.memory_rl.task_utils import (
     RewardType,
-    build_single_step_prompt,
+    build_single_step_user_prompt,
     compute_single_step_reward,
     parse_single_step_guess,
+    validate_reward_config,
     validate_secret,
 )
 from tinker_cookbook.rl.types import (
@@ -33,7 +34,6 @@ class SingleStepEnv(Env):
         N: int,
         renderer: renderers.Renderer,
         reward_type: RewardType,
-        reward_bins: int,
         convo_prefix: list[renderers.Message] | None = None,
     ):
         validate_secret(fixed_secret, N)
@@ -41,7 +41,6 @@ class SingleStepEnv(Env):
         self.N = N
         self.renderer = renderer
         self.reward_type = reward_type
-        self.reward_bins = reward_bins
         self.convo_prefix = convo_prefix or []
 
     @property
@@ -49,7 +48,7 @@ class SingleStepEnv(Env):
         return self.renderer.get_stop_sequences()
 
     def _messages(self) -> list[renderers.Message]:
-        prompt = build_single_step_prompt(self.N)
+        prompt = build_single_step_user_prompt(self.N)
         return self.convo_prefix + [{"role": "user", "content": prompt}]
 
     async def initial_observation(self) -> tuple[Observation, StopCondition]:
@@ -63,12 +62,11 @@ class SingleStepEnv(Env):
             guess=guess,
             reward_type=self.reward_type,
             N=self.N,
-            reward_bins=self.reward_bins,
         )
         correct = float(correct_bool)
         guess_display = "?" if guess is None else str(guess)
 
-        logtree.log_text(f"[SingleStepEnv] Prompt: {build_single_step_prompt(self.N)}")
+        logtree.log_text(f"[SingleStepEnv] Prompt: {build_single_step_user_prompt(self.N)}")
         logtree.log_text(f"[SingleStepEnv] Response: {message['content']}")
         logtree.log_text(
             f"[SingleStepEnv] Secret: {self.fixed_secret}, Guess: {guess_display}, Reward: {reward:.2f}"
@@ -83,19 +81,18 @@ class SingleStepEnv(Env):
                 "correct": correct,
                 "distance": distance,
                 "reward_signal": reward,
+                # For first-discovery tracking: 1 if this episode found the secret
+                "success_count": int(correct_bool),
             },
         )
 
 
 @dataclass(frozen=True)
 class SingleStepEnvGroupBuilder(EnvGroupBuilder):
-    """Builder for creating groups of identical single-step envs."""
-
     fixed_secret: int
     N: int
     renderer: renderers.Renderer
     reward_type: RewardType
-    reward_bins: int
     num_envs: int
     convo_prefix: list[renderers.Message] | None = None
 
@@ -106,20 +103,16 @@ class SingleStepEnvGroupBuilder(EnvGroupBuilder):
                 N=self.N,
                 renderer=self.renderer,
                 reward_type=self.reward_type,
-                reward_bins=self.reward_bins,
                 convo_prefix=self.convo_prefix,
             )
             for _ in range(self.num_envs)
         ]
 
     def logging_tags(self) -> list[str]:
-        suffix = f"_B{self.reward_bins}" if self.reward_type.startswith("binned") else ""
-        return [f"single_step_N{self.N}_{self.reward_type}{suffix}"]
+        return [f"single_step_N{self.N}_{self.reward_type}"]
 
 
 class SingleStepDataset(RLDataset):
-    """Dataset of single-step memorization problems."""
-
     def __init__(
         self,
         batch_size: int,
@@ -127,7 +120,6 @@ class SingleStepDataset(RLDataset):
         renderer: renderers.Renderer,
         N: int,
         reward_type: RewardType,
-        reward_bins: int,
         convo_prefix: list[renderers.Message] | None,
         n_batches: int,
         fixed_secret: int | None,
@@ -140,7 +132,6 @@ class SingleStepDataset(RLDataset):
         self.renderer = renderer
         self.N = N
         self.reward_type = reward_type
-        self.reward_bins = reward_bins
         self.convo_prefix = convo_prefix
         self.n_batches = n_batches
         self.split = split
@@ -171,7 +162,6 @@ class SingleStepDataset(RLDataset):
                     N=self.N,
                     renderer=self.renderer,
                     reward_type=self.reward_type,
-                    reward_bins=self.reward_bins,
                     num_envs=self.group_size,
                     convo_prefix=self.convo_prefix,
                 )
@@ -186,7 +176,6 @@ class SingleStepDataset(RLDataset):
                 N=self.N,
                 renderer=self.renderer,
                 reward_type=self.reward_type,
-                reward_bins=self.reward_bins,
                 num_envs=self.group_size,
                 convo_prefix=self.convo_prefix,
             )
@@ -199,15 +188,12 @@ class SingleStepDataset(RLDataset):
 
 @chz.chz
 class SingleStepDatasetBuilder(RLDatasetBuilder):
-    """Builder for creating train/test datasets."""
-
     batch_size: int
     group_size: int = 1
     model_name_for_tokenizer: str
     renderer_name: str
     N: int = 16
     reward_type: RewardType = "binary"
-    reward_bins: int = 8
     n_batches: int = 100
     convo_prefix: list[renderers.Message] | None | Literal["standard"] = None
     fixed_secret: int | None = None
@@ -217,14 +203,14 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
         tokenizer = get_tokenizer(self.model_name_for_tokenizer)
         renderer = renderers.get_renderer(self.renderer_name, tokenizer=tokenizer)
 
-        if self.reward_type in {"binned_distance", "binned_distance_signed"} and self.reward_bins < 2:
-            raise ValueError("reward_bins must be >= 2 when using a binned reward type.")
+        # Validate configuration at construction time
+        validate_reward_config(self.reward_type)
         if self.group_size < 1:
             raise ValueError("group_size must be >= 1.")
 
         if self.convo_prefix == "standard":
             prefix = [
-                {"role": "user", "content": build_single_step_prompt(self.N)},
+                {"role": "user", "content": build_single_step_user_prompt(self.N)},
                 {"role": "assistant", "content": "0"},
             ]
         else:
@@ -236,7 +222,6 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
             renderer=renderer,
             N=self.N,
             reward_type=self.reward_type,
-            reward_bins=self.reward_bins,
             convo_prefix=prefix,
             n_batches=self.n_batches,
             fixed_secret=self.fixed_secret,
@@ -250,7 +235,6 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
             renderer=renderer,
             N=self.N,
             reward_type=self.reward_type,
-            reward_bins=self.reward_bins,
             convo_prefix=prefix,
             n_batches=max(10, self.n_batches // 10),
             fixed_secret=train_dataset.fixed_secret,

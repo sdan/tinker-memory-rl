@@ -9,6 +9,8 @@ import tinker
 from tinker_cookbook import renderers
 from tinker_cookbook.completers import StopCondition
 from tinker_cookbook.recipes.memory_rl.task_utils import (
+    build_multi_step_system_prompt,
+    build_multi_step_user_prompt,
     format_secret_bits,
     num_bits_for_space,
     parse_bit_guess,
@@ -28,17 +30,6 @@ from tinker_cookbook.utils import logtree
 
 
 class MultiStepEnv(Env):
-    """
-    Environment where the agent must memorize a latent integer by outputting
-    its bitstring one bit at a time.
-
-    - A secret z is sampled in [0, N).
-    - Let k = ceil(log2 N) and B be the k-bit binary representation of z.
-    - At timestep i in [0, k-1], the agent outputs a single bit (0/1).
-    - Reward r_i = 1 if the bit matches B[i], else 0.
-    - Episode ends after k steps.
-    """
-
     def __init__(
         self,
         *,
@@ -56,55 +47,36 @@ class MultiStepEnv(Env):
         self.secret_bits = format_secret_bits(fixed_secret, N)
         self.num_bits = num_bits_for_space(N)
 
-        # Position of the next bit to guess (0-based)
         self.position = 0
-        # Conversation history: alternating user/assistant messages
         self.conversation: list[renderers.Message] = []
+        self._all_bits_correct = True
 
     @property
     def stop_condition(self) -> StopCondition:
         return self.renderer.get_stop_sequences()
 
-    def _build_system_prompt(self) -> str:
-        """Build the system prompt explaining the task."""
-        return (
-            f"You are playing a bit-by-bit memorization game. "
-            f"The secret number is between 0 and {self.N - 1} and uses {self.num_bits} bits. "
-            f"Output exactly one bit (0 or 1) per response with no punctuation."
-        )
-
-    def _build_bit_request(self, position: int) -> str:
-        """Build a simple request for the next bit."""
-        remaining = self.num_bits - position - 1
-        return f"Provide bit #{position + 1}. Remaining bits after this: {remaining}."
-
     def _messages(self) -> list[renderers.Message]:
-        """Return the full conversation history."""
-        system_msg = {"role": "system", "content": self._build_system_prompt()}
+        system_msg = {"role": "system", "content": build_multi_step_system_prompt(self.N)}
         return [system_msg] + self.convo_prefix + self.conversation
 
     async def initial_observation(self) -> tuple[Observation, StopCondition]:
         # Add the first user message asking for bit #1
-        first_request = {"role": "user", "content": self._build_bit_request(0)}
+        first_request = {"role": "user", "content": build_multi_step_user_prompt(0, self.num_bits)}
         self.conversation.append(first_request)
         return self.renderer.build_generation_prompt(self._messages()), self.stop_condition
 
     async def step(self, action: Action) -> StepResult:
-        """
-        Consume one bit from the policy and move to the next position.
-        """
-        # Parse the agent's response
         message, parse_success = self.renderer.parse_response(action)
         content = message["content"]
         guessed_bit = parse_bit_guess(content)
 
-        # Add the agent's response to conversation history
         self.conversation.append({"role": "assistant", "content": content})
 
-        # Compute reward
         correct_bit = self.secret_bits[self.position]
         correct = guessed_bit == correct_bit
         reward = 1.0 if correct else 0.0
+        if not correct:
+            self._all_bits_correct = False
 
         # Move to next position
         self.position += 1
@@ -112,7 +84,7 @@ class MultiStepEnv(Env):
 
         # Add next user request if not done
         if not episode_done:
-            next_request = {"role": "user", "content": self._build_bit_request(self.position)}
+            next_request = {"role": "user", "content": build_multi_step_user_prompt(self.position, self.num_bits)}
             self.conversation.append(next_request)
 
         # Logging for qualitative inspection
@@ -141,13 +113,15 @@ class MultiStepEnv(Env):
                 "reward_signal": reward,
                 "bit_index": float(self.position - 1),
                 "episode_done": float(episode_done),
+                "bitstring_correct": float(episode_done and self._all_bits_correct),
+                # For first-discovery tracking: 1 if full bitstring correct at episode end
+                "success_count": int(episode_done and self._all_bits_correct),
             },
         )
 
 
 @dataclass(frozen=True)
 class MultiStepEnvGroupBuilder(EnvGroupBuilder):
-    """Builder for creating groups of identical multi-step envs."""
 
     fixed_secret: int
     N: int
@@ -172,18 +146,6 @@ class MultiStepEnvGroupBuilder(EnvGroupBuilder):
 
 
 class MultiStepDataset(RLDataset):
-    """
-    Dataset of multi-step memorization problems.
-
-    Training split:
-        - Uses a single fixed secret (provided or sampled once).
-        - All episodes share the same secret so the policy can memorize it.
-
-    Test split:
-        - By default uses the same secret as the training split, repeated.
-        - Alternatively can use a list of random secrets (if desired later).
-    """
-
     def __init__(
         self,
         batch_size: int,
@@ -255,7 +217,6 @@ class MultiStepDataset(RLDataset):
 
 @chz.chz
 class MultiStepDatasetBuilder(RLDatasetBuilder):
-    """Builder for creating train/test datasets for the multi-step bitstring env."""
 
     batch_size: int
     group_size: int = 1
