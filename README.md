@@ -1,3 +1,24 @@
+# memory-rl
+
+## Installation
+
+This recipe requires the [Tinker API](https://thinkingmachines.ai/) and [tinker-cookbook](https://github.com/thinking-machines-lab/tinker-cookbook).
+
+```bash
+# Get API access at https://thinkingmachines.ai/
+export TINKER_API_KEY=sk-...
+
+# Install dependencies
+pip install tinker
+pip install git+https://github.com/thinking-machines-lab/tinker-cookbook.git
+
+# Clone this repo
+git clone https://github.com/sdan/tinker-memory-rl.git
+cd tinker-memory-rl
+```
+
+---
+
 > # Empricial study on the ability of RL to memorize information
 > 
 > RL memory test. Our post on LoRA presented theoretical arguments on the rate of information acquisition by both SFT and RL. You can set up a toy environment where RL must learn a completely random number sequence, to compare the empirical learning rate under various reward functions to the theoretical estimate.
@@ -57,7 +78,7 @@ Establishes the "speed of light" for memorization on this architecture.
 
 ```bash
 # Train SFT on a secret of size N=64 (6 bits)
-uv run python -m tinker_cookbook.recipes.memory_rl.sft_train \
+uv run python sft_train.py \
     N=64 \
     learning_rate=1e-4 \
     batch_size=32 \
@@ -70,7 +91,7 @@ Tests the "1 bit per episode" hypothesis. We sweep over `reward_bins` to test ch
 
 ```bash
 # Hard mode: Binary reward (Success/Fail)
-uv run python -m tinker_cookbook.recipes.memory_rl.rl_train \
+uv run python rl_train.py \
     env_type=single_step \
     N=64 \
     reward_type=binary \
@@ -79,7 +100,7 @@ uv run python -m tinker_cookbook.recipes.memory_rl.rl_train \
     wandb_project=memory-rl-scalar
 
 # Informative mode: Distance quantized into 8 bins (3 bits theoretical max)
-uv run python -m tinker_cookbook.recipes.memory_rl.rl_train \
+uv run python rl_train.py \
     env_type=single_step \
     N=64 \
     reward_type=binned_distance \
@@ -93,7 +114,7 @@ Tests if per-step rewards restore high-bandwidth learning. The model outputs the
 
 ```bash
 # Dense rewards: +1 per correct bit
-uv run python -m tinker_cookbook.recipes.memory_rl.rl_train \
+uv run python rl_train.py \
     env_type=multi_step \
     N=64 \
     reward_type=per_bit \
@@ -105,7 +126,7 @@ uv run python -m tinker_cookbook.recipes.memory_rl.rl_train \
 To visualize the prompt structure and model outputs without training:
 
 ```bash
-uv run python -m tinker_cookbook.recipes.memory_rl.preview_env \
+uv run python preview_env.py \
     env_type=single_step \
     N=64 \
     num_preview_examples=5 \
