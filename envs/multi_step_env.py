@@ -117,9 +117,6 @@ class MultiStepEnv(Env):
             metrics={
                 "correct_bit": float(correct),
                 "reward_signal": reward,
-                "bit_index": float(self.position - 1),
-                "episode_done": float(episode_done),
-                "bitstring_correct": float(episode_done and self._all_bits_correct),
                 "success_count": int(episode_done and self._all_bits_correct),
                 "format_error": format_error,
                 "parse_success": parse_success_float,

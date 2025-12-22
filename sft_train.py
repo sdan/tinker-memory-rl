@@ -14,7 +14,7 @@ from tinker_cookbook.supervised import train
 from tinker_cookbook.supervised.data import FromConversationFileBuilder
 from tinker_cookbook.supervised.types import ChatDatasetBuilderCommonConfig
 
-from bits_evaluator import BitsKnownEvaluator
+from eval import BitsKnownEvaluator
 from envs import RewardType, SingleStepDatasetBuilder
 
 logger = logging.getLogger(__name__)

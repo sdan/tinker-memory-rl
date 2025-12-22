@@ -12,6 +12,8 @@ from .task_utils import (
     compute_single_step_reward,
     num_bits_for_space,
     format_secret_bits,
+    sum_weighted_logprobs,
+    compute_bits_known,
 )
 
 __all__ = [
@@ -30,4 +32,6 @@ __all__ = [
     "compute_single_step_reward",
     "num_bits_for_space",
     "format_secret_bits",
+    "sum_weighted_logprobs",
+    "compute_bits_known",
 ]

@@ -15,7 +15,7 @@ from envs import (
     num_bits_for_space,
     validate_reward_config,
 )
-from bits_evaluator import BitsKnownEvaluator
+from eval import BitsKnownEvaluator
 
 logger = logging.getLogger(__name__)
 

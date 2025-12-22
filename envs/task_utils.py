@@ -140,3 +140,27 @@ def format_secret_bits(secret: int, N: int) -> str:
     """Format secret as binary string with appropriate width."""
     width = num_bits_for_space(N)
     return format(secret, f"0{width}b")
+
+
+def sum_weighted_logprobs(logprobs: list[float | None], weights: list[float]) -> tuple[float, int]:
+    """Sum logprobs weighted by mask, returning (total, count)."""
+    total = 0.0
+    count = 0
+    for logprob, weight in zip(logprobs, weights, strict=True):
+        if weight <= 0 or logprob is None:
+            continue
+        total += logprob * weight
+        count += 1
+    return total, count
+
+
+def compute_bits_known(target_logprob: float, N: int) -> tuple[float, float]:
+    """
+    Compute bits_known from target logprob.
+
+    Returns: (bits_known_raw, bits_known_clamped)
+    """
+    signal_bits = math.log2(N) if N > 1 else 1.0
+    bits_known_raw = signal_bits + (target_logprob / math.log(2))
+    bits_known_clamped = max(0.0, min(signal_bits, bits_known_raw))
+    return bits_known_raw, bits_known_clamped

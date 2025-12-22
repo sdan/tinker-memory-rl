@@ -1,4 +1,3 @@
-import math
 from typing import Literal
 
 import numpy as np
@@ -10,25 +9,16 @@ from envs import (
     build_multi_step_system_prompt,
     build_multi_step_user_prompt,
     build_single_step_user_prompt,
+    compute_bits_known,
     format_secret_bits,
     num_bits_for_space,
+    sum_weighted_logprobs,
 )
 
 
-def _sum_weighted_logprobs(logprobs: list[float | None], weights: list[float]) -> tuple[float, int]:
-    total = 0.0
-    count = 0
-    for logprob, weight in zip(logprobs, weights, strict=True):
-        if weight <= 0:
-            continue
-        if logprob is None:
-            continue
-        total += logprob * weight
-        count += 1
-    return total, count
-
-
 class BitsKnownEvaluator(SamplingClientEvaluator):
+    """Evaluates bits of information the model has learned about the secret."""
+
     def __init__(
         self,
         dataset_builder,
@@ -76,7 +66,6 @@ class BitsKnownEvaluator(SamplingClientEvaluator):
         dataset = await self._ensure_dataset()
         renderer = dataset.renderer
         N = dataset.N
-        signal_bits = math.log2(N) if N > 1 else 1.0
         train_on = (
             TrainOnWhat.LAST_ASSISTANT_MESSAGE
             if self._env_type == "single_step"
@@ -88,7 +77,6 @@ class BitsKnownEvaluator(SamplingClientEvaluator):
         bits_raw = []
         bits_clamped = []
         target_logprobs = []
-        token_counts = []
 
         for secret in secrets:
             messages = self._build_messages(N, secret, dataset.convo_prefix)
@@ -99,21 +87,16 @@ class BitsKnownEvaluator(SamplingClientEvaluator):
             logprobs = await sampling_client.compute_logprobs_async(
                 tinker.ModelInput.from_ints(token_list)
             )
-            target_logprob, target_token_count = _sum_weighted_logprobs(logprobs, weight_list)
-
-            # bits_known = log2(N) + log2 P(secret | prompt)
-            bits_known_raw = signal_bits + (target_logprob / math.log(2))
-            bits_known_clamped = max(0.0, min(signal_bits, bits_known_raw))
+            target_logprob, _ = sum_weighted_logprobs(logprobs, weight_list)
+            bits_known_raw, bits_known_clamped = compute_bits_known(target_logprob, N)
 
             bits_raw.append(bits_known_raw)
             bits_clamped.append(bits_known_clamped)
             target_logprobs.append(target_logprob)
-            token_counts.append(target_token_count)
 
         bits_raw_arr = np.array(bits_raw, dtype=float)
         bits_clamped_arr = np.array(bits_clamped, dtype=float)
         target_logprob_arr = np.array(target_logprobs, dtype=float)
-        token_count_arr = np.array(token_counts, dtype=float)
 
         prefix = self._metric_prefix
         return {
@@ -123,7 +106,4 @@ class BitsKnownEvaluator(SamplingClientEvaluator):
             f"{prefix}/known_clamped_std": float(bits_clamped_arr.std()),
             f"{prefix}/target_logprob_mean": float(target_logprob_arr.mean()),
             f"{prefix}/target_logprob_std": float(target_logprob_arr.std()),
-            f"{prefix}/target_token_count_mean": float(token_count_arr.mean()),
-            f"{prefix}/num_examples": float(len(bits_raw_arr)),
-            f"{prefix}/signal_bits": float(signal_bits),
         }
