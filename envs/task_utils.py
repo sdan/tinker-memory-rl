@@ -50,17 +50,24 @@ def build_multi_step_user_prompt(position: int, num_bits: int) -> str:
 
 
 def parse_single_step_guess(sample_str: str, N: int) -> int | None:
+    """
+    Parse the model's guess from its response.
+
+    Relaxed parsing: extracts first sequence of digits from the response,
+    allowing formats like "42", "Answer: 42", "The number is 42", etc.
+    """
     stripped = sample_str.strip()
     if not stripped:
         return None
 
-    # Sometimes the tokenizer splits larger numbers into multiple tokens
-    digits = re.sub(r'[^\d]', '', stripped.split('\n')[0])
+    # Extract first contiguous digit sequence from the first line
+    first_line = stripped.split('\n')[0]
+    digits = re.search(r'\d+', first_line)
     if not digits:
         return None
 
     try:
-        guess = int(digits)
+        guess = int(digits.group())
     except ValueError:
         return None
 
@@ -68,12 +75,15 @@ def parse_single_step_guess(sample_str: str, N: int) -> int | None:
 
 
 def parse_bit_guess(sample_str: str) -> str | None:
-    stripped = sample_str.strip()
-    if not stripped:
-        return None
-    ch = stripped[0]
-    if ch in ("0", "1"):
-        return ch
+    """
+    Parse a single bit from the model's response.
+
+    Relaxed parsing: finds first '0' or '1' in the response,
+    allowing formats like "0", "Bit: 1", "The bit is 0", etc.
+    """
+    match = re.search(r"[01]", sample_str)
+    if match:
+        return match.group(0)
     return None
 
 
@@ -83,6 +93,11 @@ def compute_single_step_reward(
     reward_type: RewardType,
     N: int,
 ) -> tuple[float, bool, float]:
+    """
+    Compute reward for a single-step guess.
+
+    Returns: (reward, correct, distance)
+    """
     max_bits = math.log2(N) if N > 1 else 1.0
 
     if guess is None:
@@ -96,16 +111,20 @@ def compute_single_step_reward(
         base_reward = float(correct)
     elif reward_type == "log_distance":
         base_reward = max(0.0, 1.0 - (math.log2(distance + 1) / max_bits))
+    else:
+        base_reward = float(correct)
 
     return base_reward, correct, distance
 
 
 def num_bits_for_space(N: int) -> int:
+    """Number of bits needed to represent integers in [0, N)."""
     if N <= 1:
         return 1
     return max(1, math.ceil(math.log2(N)))
 
 
 def format_secret_bits(secret: int, N: int) -> str:
+    """Format secret as binary string with appropriate width."""
     width = num_bits_for_space(N)
     return format(secret, f"0{width}b")

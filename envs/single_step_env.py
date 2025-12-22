@@ -6,14 +6,6 @@ import numpy as np
 import tinker
 from tinker_cookbook import renderers
 from tinker_cookbook.completers import StopCondition
-from tinker_cookbook.recipes.memory_rl.task_utils import (
-    RewardType,
-    build_single_step_user_prompt,
-    compute_single_step_reward,
-    parse_single_step_guess,
-    validate_reward_config,
-    validate_secret,
-)
 from tinker_cookbook.rl.types import (
     Action,
     Env,
@@ -21,13 +13,29 @@ from tinker_cookbook.rl.types import (
     Observation,
     RLDataset,
     RLDatasetBuilder,
-    StepResult
+    StepResult,
 )
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 from tinker_cookbook.utils import logtree
 
+from .task_utils import (
+    RewardType,
+    build_single_step_user_prompt,
+    compute_single_step_reward,
+    parse_single_step_guess,
+    validate_reward_config,
+    validate_secret,
+)
+
 
 class SingleStepEnv(Env):
+    """
+    Single-step memory environment.
+
+    The model must guess a fixed secret integer in one shot.
+    Reward is determined by reward_type (binary or log_distance).
+    """
+
     def __init__(
         self,
         fixed_secret: int,
@@ -52,7 +60,8 @@ class SingleStepEnv(Env):
         return self.convo_prefix + [{"role": "user", "content": prompt}]
 
     async def initial_observation(self) -> tuple[Observation, StopCondition]:
-        return self.renderer.build_generation_prompt(self._messages()), self.stop_condition
+        obs = self.renderer.build_generation_prompt(self._messages())
+        return obs, self.stop_condition
 
     async def step(self, action: Action) -> StepResult:
         message, parse_success = self.renderer.parse_response(action)
@@ -65,6 +74,8 @@ class SingleStepEnv(Env):
         )
         correct = float(correct_bool)
         guess_display = "?" if guess is None else str(guess)
+        format_error = float(guess is None)
+        parse_success_float = float(parse_success)
 
         logtree.log_text(f"[SingleStepEnv] Prompt: {build_single_step_user_prompt(self.N)}")
         logtree.log_text(f"[SingleStepEnv] Response: {message['content']}")
@@ -81,8 +92,9 @@ class SingleStepEnv(Env):
                 "correct": correct,
                 "distance": distance,
                 "reward_signal": reward,
-                # For first-discovery tracking: 1 if this episode found the secret
                 "success_count": int(correct_bool),
+                "format_error": format_error,
+                "parse_success": parse_success_float,
             },
         )
 
@@ -203,7 +215,6 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
         tokenizer = get_tokenizer(self.model_name_for_tokenizer)
         renderer = renderers.get_renderer(self.renderer_name, tokenizer=tokenizer)
 
-        # Validate configuration at construction time
         validate_reward_config(self.reward_type)
         if self.group_size < 1:
             raise ValueError("group_size must be >= 1.")

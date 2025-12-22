@@ -6,10 +6,16 @@ from typing import Literal
 
 import chz
 from tinker_cookbook import cli_utils, model_info
-from tinker_cookbook.recipes.memory_rl.task_utils import num_bits_for_space, validate_reward_config
 from tinker_cookbook.rl import train
-from tinker_cookbook.recipes.memory_rl.multi_step_env import MultiStepDatasetBuilder
-from tinker_cookbook.recipes.memory_rl.single_step_env import SingleStepDatasetBuilder
+
+# Use local envs/ module instead of tinker_cookbook.recipes.memory_rl
+from envs import (
+    MultiStepDatasetBuilder,
+    SingleStepDatasetBuilder,
+    num_bits_for_space,
+    validate_reward_config,
+)
+from bits_evaluator import BitsKnownEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +54,7 @@ class Config:
     save_every: int = 20
     loss_fn: Literal["importance_sampling", "ppo"] = "importance_sampling"
     dataset_seed: int = 0
+    eval_bits: bool = True
 
     log_path: str | None = None
     wandb_project: str | None = None
@@ -134,6 +141,16 @@ def build_config(cli: Config) -> train.Config:
         else (cli.env_type == "multi_step")
     )
 
+    evaluator_builders = []
+    if cli.eval_bits:
+        evaluator_builders.append(
+            lambda builder=builder, env_type=cli.env_type: BitsKnownEvaluator(
+                dataset_builder=builder,
+                env_type=env_type,
+                metric_prefix="test/bits",
+            )
+        )
+
     return train.Config(
         model_name=cli.model_name,
         load_checkpoint_path=cli.load_checkpoint_path,
@@ -149,6 +166,7 @@ def build_config(cli: Config) -> train.Config:
         wandb_project=cli.wandb_project,
         wandb_name=wandb_name,
         initial_metrics=initial_metrics,
+        evaluator_builders=evaluator_builders,
         use_stepwise_advantages=use_stepwise_advantages,
         normalize_advantages=cli.normalize_advantages,
         advantage_norm_eps=cli.advantage_norm_eps,

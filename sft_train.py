@@ -8,13 +8,14 @@ import tinker
 
 from tinker_cookbook import cli_utils, model_info
 from tinker_cookbook.eval.evaluators import EvaluatorBuilder, SamplingClientEvaluator
-from tinker_cookbook.recipes.memory_rl.single_step_env import SingleStepDatasetBuilder
-from tinker_cookbook.recipes.memory_rl.task_utils import RewardType
 from tinker_cookbook.renderers import TrainOnWhat
 from tinker_cookbook.rl.metric_util import RLTestSetEvaluator
 from tinker_cookbook.supervised import train
 from tinker_cookbook.supervised.data import FromConversationFileBuilder
 from tinker_cookbook.supervised.types import ChatDatasetBuilderCommonConfig
+
+from bits_evaluator import BitsKnownEvaluator
+from envs import RewardType, SingleStepDatasetBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class Config:
     eval_batch_size: int = 64
     eval_n_batches: int = 10
     eval_max_tokens: int = 8
+    eval_bits: bool = True
 
     log_path: str | None = None
     wandb_project: str | None = None
@@ -53,7 +55,7 @@ class _LazyEnvEvaluator(SamplingClientEvaluator):
         self,
         dataset_builder: SingleStepDatasetBuilder,
         max_tokens: int,
-        name: str = "env",
+        name: str = "test",
     ):
         self._dataset_builder = dataset_builder
         self._max_tokens = max_tokens
@@ -102,12 +104,21 @@ def build_config(cli: Config) -> train.Config:
         seed=0,
     )
 
-    evaluator_builders: list[EvaluatorBuilder] = [
+    evaluator_builders: list[EvaluatorBuilder] = []
+    evaluator_builders.append(
         lambda builder=env_dataset_builder: _LazyEnvEvaluator(
             dataset_builder=builder,
             max_tokens=cli.eval_max_tokens,
         )
-    ]
+    )
+    if cli.eval_bits:
+        evaluator_builders.append(
+            lambda builder=env_dataset_builder: BitsKnownEvaluator(
+                dataset_builder=builder,
+                env_type="single_step",
+                metric_prefix="test/bits",
+            )
+        )
 
     date_and_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     default_run_name = f"sft_N{cli.N}_bs{cli.batch_size}_lr{cli.learning_rate}_{date_and_time}"

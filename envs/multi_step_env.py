@@ -8,14 +8,6 @@ import numpy as np
 import tinker
 from tinker_cookbook import renderers
 from tinker_cookbook.completers import StopCondition
-from tinker_cookbook.recipes.memory_rl.task_utils import (
-    build_multi_step_system_prompt,
-    build_multi_step_user_prompt,
-    format_secret_bits,
-    num_bits_for_space,
-    parse_bit_guess,
-    validate_secret,
-)
 from tinker_cookbook.rl.types import (
     Action,
     Env,
@@ -28,8 +20,24 @@ from tinker_cookbook.rl.types import (
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 from tinker_cookbook.utils import logtree
 
+from .task_utils import (
+    build_multi_step_system_prompt,
+    build_multi_step_user_prompt,
+    format_secret_bits,
+    num_bits_for_space,
+    parse_bit_guess,
+    validate_secret,
+)
+
 
 class MultiStepEnv(Env):
+    """
+    Multi-step (bit-by-bit) memory environment.
+
+    The model outputs one bit at a time, receiving reward per bit.
+    This provides denser feedback than single-step binary reward.
+    """
+
     def __init__(
         self,
         *,
@@ -60,7 +68,6 @@ class MultiStepEnv(Env):
         return [system_msg] + self.convo_prefix + self.conversation
 
     async def initial_observation(self) -> tuple[Observation, StopCondition]:
-        # Add the first user message asking for bit #1
         first_request = {"role": "user", "content": build_multi_step_user_prompt(0, self.num_bits)}
         self.conversation.append(first_request)
         return self.renderer.build_generation_prompt(self._messages()), self.stop_condition
@@ -77,17 +84,16 @@ class MultiStepEnv(Env):
         reward = 1.0 if correct else 0.0
         if not correct:
             self._all_bits_correct = False
+        format_error = float(guessed_bit is None)
+        parse_success_float = float(parse_success)
 
-        # Move to next position
         self.position += 1
         episode_done = self.position >= self.num_bits
 
-        # Add next user request if not done
         if not episode_done:
             next_request = {"role": "user", "content": build_multi_step_user_prompt(self.position, self.num_bits)}
             self.conversation.append(next_request)
 
-        # Logging for qualitative inspection
         logtree.log_text(
             "[MultiStepEnv] "
             f"pos={self.position - 1}/{self.num_bits - 1}, "
@@ -114,15 +120,15 @@ class MultiStepEnv(Env):
                 "bit_index": float(self.position - 1),
                 "episode_done": float(episode_done),
                 "bitstring_correct": float(episode_done and self._all_bits_correct),
-                # For first-discovery tracking: 1 if full bitstring correct at episode end
                 "success_count": int(episode_done and self._all_bits_correct),
+                "format_error": format_error,
+                "parse_success": parse_success_float,
             },
         )
 
 
 @dataclass(frozen=True)
 class MultiStepEnvGroupBuilder(EnvGroupBuilder):
-
     fixed_secret: int
     N: int
     renderer: renderers.Renderer
@@ -171,7 +177,6 @@ class MultiStepDataset(RLDataset):
             validate_secret(fixed_secret, N)
             self.fixed_secret = int(fixed_secret)
         elif split == "train":
-            # Sample a single secret for this run and reuse it across episodes.
             self.fixed_secret = int(self._rng.randint(0, N))
         else:
             self.fixed_secret = None
@@ -217,7 +222,6 @@ class MultiStepDataset(RLDataset):
 
 @chz.chz
 class MultiStepDatasetBuilder(RLDatasetBuilder):
-
     batch_size: int
     group_size: int = 1
     model_name_for_tokenizer: str
@@ -236,7 +240,6 @@ class MultiStepDatasetBuilder(RLDatasetBuilder):
             raise ValueError("group_size must be >= 1.")
 
         if self.convo_prefix == "standard":
-            # Simple few-shot prefix demonstrating the bit-by-bit behavior.
             num_bits = num_bits_for_space(self.N)
             prefix: list[renderers.Message] | None = [
                 {"role": "user", "content": f"Provide bit #1. Remaining bits after this: {num_bits - 1}."},

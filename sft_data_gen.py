@@ -4,7 +4,7 @@ from pathlib import Path
 
 import chz
 
-from tinker_cookbook.recipes.memory_rl.task_utils import build_single_step_user_prompt
+from envs import build_single_step_user_prompt
 
 logger = logging.getLogger(__name__)
 
