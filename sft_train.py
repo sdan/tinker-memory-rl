@@ -29,6 +29,7 @@ class Config:
     fixed_secret: int = 0
     train_data_path: str = "/tmp/tinker-examples/memory_rl/sft_data/train.jsonl"
     reward_type: RewardType = "binary"
+    reward_bins: int | None = None
 
     learning_rate: float = 2e-4
     lr_schedule: str = "linear"
@@ -98,6 +99,7 @@ def build_config(cli: Config) -> train.Config:
         renderer_name=renderer_name,
         N=cli.N,
         reward_type=cli.reward_type,
+        reward_bins=cli.reward_bins,
         n_batches=cli.eval_n_batches,
         convo_prefix=None,
         fixed_secret=cli.fixed_secret,

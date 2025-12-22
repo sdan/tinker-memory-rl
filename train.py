@@ -32,6 +32,7 @@ class Config:
 
     N: int = 16
     reward_type: str = "binary"
+    reward_bins: int | None = None
     fixed_secret: int | None = None
     use_standard_prefix: bool = False
     env_type: Literal["single_step", "multi_step"] = "single_step"
@@ -69,7 +70,7 @@ def build_config(cli: Config) -> train.Config:
     renderer_name = cli.renderer_name or model_info.get_recommended_renderer_name(cli.model_name)
 
     if cli.env_type == "single_step":
-        validate_reward_config(cli.reward_type)
+        validate_reward_config(cli.reward_type, cli.reward_bins)
 
     prefix = "standard" if cli.use_standard_prefix else None
 
@@ -81,6 +82,7 @@ def build_config(cli: Config) -> train.Config:
             model_name_for_tokenizer=cli.model_name,
             N=cli.N,
             reward_type=cli.reward_type,
+            reward_bins=cli.reward_bins,
             n_batches=cli.n_batches,
             fixed_secret=cli.fixed_secret,
             convo_prefix=prefix,
@@ -102,8 +104,9 @@ def build_config(cli: Config) -> train.Config:
         raise ValueError(f"Unknown env_type {cli.env_type}")
 
     date_and_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+    reward_suffix = f"{cli.reward_type}_B{cli.reward_bins}" if cli.reward_bins else cli.reward_type
     default_run_name = (
-        f"{cli.env_type}_{cli.reward_type}_N{cli.N}_bs{cli.batch_size}_gs{cli.group_size}_lr{cli.learning_rate}_{date_and_time}"
+        f"{cli.env_type}_{reward_suffix}_N{cli.N}_bs{cli.batch_size}_gs{cli.group_size}_lr{cli.learning_rate}_{date_and_time}"
     )
     log_path = cli.log_path or f"/tmp/tinker-examples/memory_rl/{default_run_name}"
     wandb_name = cli.wandb_name or default_run_name
@@ -117,6 +120,9 @@ def build_config(cli: Config) -> train.Config:
         elif cli.reward_type == "log_distance":
             algo_type = "rl_end_continuous"
             max_bits = None
+        elif cli.reward_type == "binned_log_distance":
+            algo_type = "rl_end_binned"
+            max_bits = math.log2(cli.reward_bins) if cli.reward_bins else None
         else:
             algo_type = "rl_end_unknown"
             max_bits = None
@@ -128,6 +134,7 @@ def build_config(cli: Config) -> train.Config:
         "cfg/env_type": cli.env_type,
         "algo/type": algo_type,
         "cfg/reward_type": cli.reward_type,
+        "cfg/reward_bins": cli.reward_bins,
         "cfg/log2_N": entropy_bits,
         "cfg/num_bits": num_bits,
         "signal/total_bits": entropy_bits,
@@ -180,7 +187,12 @@ async def main():
     entropy_bits = math.log2(cli.N) if cli.N > 0 else 0
     num_bits = num_bits_for_space(cli.N)
     if cli.env_type == "single_step":
-        channel_desc = f"{cli.reward_type} (1 bit max)" if cli.reward_type == "binary" else "continuous"
+        if cli.reward_type == "binary":
+            channel_desc = "binary (1 bit max)"
+        elif cli.reward_type == "binned_log_distance":
+            channel_desc = f"binned_log_distance (B={cli.reward_bins})"
+        else:
+            channel_desc = "continuous"
     else:
         channel_desc = f"{num_bits} bits (1 per step)"
 

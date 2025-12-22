@@ -12,6 +12,7 @@ A secret integer $S \in [0, N)$ is fixed for the entire run. The model must lear
 |-----------|---------------|---------------------|
 | **SFT** | "The answer is 42" | $\log_2 N$ bits/example |
 | **Scalar RL** | 1 if correct, 0 otherwise | ≤1 bit/episode |
+| **Binned RL** | log-distance binned into B levels | ≤$\log_2 B$ bits/episode |
 | **Dense RL** | 1 per correct bit, k steps | $\log_2 N$ bits/episode |
 
 We measure: **episodes to memorize** → **empirical bits/episode**
@@ -29,6 +30,9 @@ export TINKER_API_KEY=sk-...
 
 # Scalar RL (the bottleneck)
 python train.py env_type=single_step N=64 reward_type=binary
+
+# Binned scalar RL (controlled bandwidth)
+python train.py env_type=single_step N=64 reward_type=binned_log_distance reward_bins=8
 
 # Dense RL (the control)
 python train.py env_type=multi_step N=64

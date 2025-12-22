@@ -8,6 +8,7 @@ from typing import Literal
 RewardType = Literal[
     "binary",
     "log_distance",
+    "binned_log_distance",
 ]
 
 
@@ -18,12 +19,15 @@ def validate_secret(secret: int, N: int) -> None:
         raise ValueError(f"Secret {secret} must be in [0, {N - 1}] when N={N}")
 
 
-def validate_reward_config(reward_type: RewardType) -> None:
-    if reward_type not in {"binary", "log_distance"}:
+def validate_reward_config(reward_type: RewardType, reward_bins: int | None = None) -> None:
+    if reward_type not in {"binary", "log_distance", "binned_log_distance"}:
         raise ValueError(
             f"Unsupported reward_type '{reward_type}'. "
-            f"Use 'binary' or 'log_distance'."
+            f"Use 'binary', 'log_distance', or 'binned_log_distance'."
         )
+    if reward_type == "binned_log_distance":
+        if reward_bins is None or reward_bins < 2:
+            raise ValueError("binned_log_distance requires reward_bins >= 2.")
 
 
 def build_single_step_user_prompt(N: int) -> str:
@@ -92,6 +96,7 @@ def compute_single_step_reward(
     guess: int | None,
     reward_type: RewardType,
     N: int,
+    reward_bins: int | None = None,
 ) -> tuple[float, bool, float]:
     """
     Compute reward for a single-step guess.
@@ -111,6 +116,13 @@ def compute_single_step_reward(
         base_reward = float(correct)
     elif reward_type == "log_distance":
         base_reward = max(0.0, 1.0 - (math.log2(distance + 1) / max_bits))
+    elif reward_type == "binned_log_distance":
+        validate_reward_config(reward_type, reward_bins)
+        raw_reward = max(0.0, 1.0 - (math.log2(distance + 1) / max_bits))
+        # Quantize to B bins in [0, 1], inclusive of endpoints.
+        assert reward_bins is not None
+        bin_index = int(round(raw_reward * (reward_bins - 1)))
+        base_reward = bin_index / float(reward_bins - 1)
     else:
         base_reward = float(correct)
 

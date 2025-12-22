@@ -42,6 +42,7 @@ class SingleStepEnv(Env):
         N: int,
         renderer: renderers.Renderer,
         reward_type: RewardType,
+        reward_bins: int | None = None,
         convo_prefix: list[renderers.Message] | None = None,
     ):
         validate_secret(fixed_secret, N)
@@ -49,6 +50,7 @@ class SingleStepEnv(Env):
         self.N = N
         self.renderer = renderer
         self.reward_type = reward_type
+        self.reward_bins = reward_bins
         self.convo_prefix = convo_prefix or []
 
     @property
@@ -71,6 +73,7 @@ class SingleStepEnv(Env):
             guess=guess,
             reward_type=self.reward_type,
             N=self.N,
+            reward_bins=self.reward_bins,
         )
         correct = float(correct_bool)
         guess_display = "?" if guess is None else str(guess)
@@ -105,6 +108,7 @@ class SingleStepEnvGroupBuilder(EnvGroupBuilder):
     N: int
     renderer: renderers.Renderer
     reward_type: RewardType
+    reward_bins: int | None
     num_envs: int
     convo_prefix: list[renderers.Message] | None = None
 
@@ -115,12 +119,15 @@ class SingleStepEnvGroupBuilder(EnvGroupBuilder):
                 N=self.N,
                 renderer=self.renderer,
                 reward_type=self.reward_type,
+                reward_bins=self.reward_bins,
                 convo_prefix=self.convo_prefix,
             )
             for _ in range(self.num_envs)
         ]
 
     def logging_tags(self) -> list[str]:
+        if self.reward_bins:
+            return [f"single_step_N{self.N}_{self.reward_type}_B{self.reward_bins}"]
         return [f"single_step_N{self.N}_{self.reward_type}"]
 
 
@@ -132,6 +139,7 @@ class SingleStepDataset(RLDataset):
         renderer: renderers.Renderer,
         N: int,
         reward_type: RewardType,
+        reward_bins: int | None,
         convo_prefix: list[renderers.Message] | None,
         n_batches: int,
         fixed_secret: int | None,
@@ -144,6 +152,7 @@ class SingleStepDataset(RLDataset):
         self.renderer = renderer
         self.N = N
         self.reward_type = reward_type
+        self.reward_bins = reward_bins
         self.convo_prefix = convo_prefix
         self.n_batches = n_batches
         self.split = split
@@ -174,6 +183,7 @@ class SingleStepDataset(RLDataset):
                     N=self.N,
                     renderer=self.renderer,
                     reward_type=self.reward_type,
+                    reward_bins=self.reward_bins,
                     num_envs=self.group_size,
                     convo_prefix=self.convo_prefix,
                 )
@@ -188,6 +198,7 @@ class SingleStepDataset(RLDataset):
                 N=self.N,
                 renderer=self.renderer,
                 reward_type=self.reward_type,
+                reward_bins=self.reward_bins,
                 num_envs=self.group_size,
                 convo_prefix=self.convo_prefix,
             )
@@ -206,6 +217,7 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
     renderer_name: str
     N: int = 16
     reward_type: RewardType = "binary"
+    reward_bins: int | None = None
     n_batches: int = 100
     convo_prefix: list[renderers.Message] | None | Literal["standard"] = None
     fixed_secret: int | None = None
@@ -215,7 +227,7 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
         tokenizer = get_tokenizer(self.model_name_for_tokenizer)
         renderer = renderers.get_renderer(self.renderer_name, tokenizer=tokenizer)
 
-        validate_reward_config(self.reward_type)
+        validate_reward_config(self.reward_type, self.reward_bins)
         if self.group_size < 1:
             raise ValueError("group_size must be >= 1.")
 
@@ -233,6 +245,7 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
             renderer=renderer,
             N=self.N,
             reward_type=self.reward_type,
+            reward_bins=self.reward_bins,
             convo_prefix=prefix,
             n_batches=self.n_batches,
             fixed_secret=self.fixed_secret,
@@ -246,6 +259,7 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
             renderer=renderer,
             N=self.N,
             reward_type=self.reward_type,
+            reward_bins=self.reward_bins,
             convo_prefix=prefix,
             n_batches=max(10, self.n_batches // 10),
             fixed_secret=train_dataset.fixed_secret,
