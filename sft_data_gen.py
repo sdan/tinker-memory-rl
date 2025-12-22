@@ -34,20 +34,38 @@ class Config:
     output_dir: str = "/tmp/tinker-examples/memory_rl/sft_data"
 
 
+def generate_data(
+    N: int,
+    fixed_secret: int,
+    num_train: int,
+    num_test: int,
+    output_dir: str,
+) -> None:
+    """Generate SFT data. Called by xmux sweep or CLI."""
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    train_path = out_path / "train.jsonl"
+    test_path = out_path / "test.jsonl"
+
+    generate_sft_data(N, fixed_secret, num_train, train_path)
+    generate_sft_data(N, fixed_secret, num_test, test_path)
+
+    logger.info(f"Secret: {fixed_secret}")
+    logger.info(f"Wrote {num_train} train examples to {train_path}")
+    logger.info(f"Wrote {num_test} test examples to {test_path}")
+
+
 def main() -> None:
+    """CLI entrypoint."""
     cfg = chz.entrypoint(Config)
-    output_dir = Path(cfg.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    train_path = output_dir / "train.jsonl"
-    test_path = output_dir / "test.jsonl"
-
-    generate_sft_data(cfg.N, cfg.fixed_secret, cfg.num_train, train_path)
-    generate_sft_data(cfg.N, cfg.fixed_secret, cfg.num_test, test_path)
-
-    logger.info(f"Secret: {cfg.fixed_secret}")
-    logger.info(f"Wrote {cfg.num_train} train examples to {train_path}")
-    logger.info(f"Wrote {cfg.num_test} test examples to {test_path}")
+    generate_data(
+        N=cfg.N,
+        fixed_secret=cfg.fixed_secret,
+        num_train=cfg.num_train,
+        num_test=cfg.num_test,
+        output_dir=cfg.output_dir,
+    )
 
 
 if __name__ == "__main__":

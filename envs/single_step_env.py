@@ -219,6 +219,7 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
     reward_type: RewardType = "binary"
     reward_bins: int | None = None
     n_batches: int = 100
+    test_n_batches: int | None = None
     convo_prefix: list[renderers.Message] | None | Literal["standard"] = None
     fixed_secret: int | None = None
     seed: int = 1337
@@ -261,7 +262,11 @@ class SingleStepDatasetBuilder(RLDatasetBuilder):
             reward_type=self.reward_type,
             reward_bins=self.reward_bins,
             convo_prefix=prefix,
-            n_batches=max(10, self.n_batches // 10),
+            n_batches=(
+                int(self.test_n_batches)
+                if self.test_n_batches is not None
+                else max(10, self.n_batches // 10)
+            ),
             fixed_secret=train_dataset.fixed_secret,
             seed=self.seed,
             split="test",

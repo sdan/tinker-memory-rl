@@ -201,6 +201,7 @@ class MultiStepDataset(RLDataset):
                     num_envs=self.group_size,
                     convo_prefix=self.convo_prefix,
                 )
+                for _ in range(self.batch_size)
             ]
 
         batch_start = index * self.batch_size
@@ -228,6 +229,7 @@ class MultiStepDatasetBuilder(RLDatasetBuilder):
     renderer_name: str
     N: int = 16
     n_batches: int = 100
+    test_n_batches: int | None = None
     convo_prefix: list[renderers.Message] | None | Literal["standard"] = None
     fixed_secret: int | None = None
     seed: int = 1337
@@ -265,7 +267,11 @@ class MultiStepDatasetBuilder(RLDatasetBuilder):
             group_size=self.group_size,
             renderer=renderer,
             N=self.N,
-            n_batches=max(10, self.n_batches // 10),
+            n_batches=(
+                int(self.test_n_batches)
+                if self.test_n_batches is not None
+                else max(10, self.n_batches // 10)
+            ),
             convo_prefix=prefix,
             fixed_secret=train_dataset.fixed_secret,
             seed=self.seed,

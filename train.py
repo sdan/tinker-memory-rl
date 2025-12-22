@@ -38,20 +38,13 @@ class Config:
     env_type: Literal["single_step", "multi_step"] = "single_step"
 
     batch_size: int = 1
-    group_size: int = 1
+    group_size: int = 4
     n_batches: int = 1000
+    test_n_batches: int | None = None
     lora_rank: int = 1
     learning_rate: float = 4e-5
     max_tokens: int = 8
     eval_every: int = 10
-    eval_steps: tuple[int, ...] | None = chz.field(
-        default=None,
-        munger=lambda _, v: (
-            tuple(int(x) for x in v.split(",") if x)
-            if isinstance(v, str)
-            else (tuple(v) if v is not None else None)
-        ),
-    )
     save_every: int = 20
     loss_fn: Literal["importance_sampling", "ppo"] = "importance_sampling"
     dataset_seed: int = 0
@@ -61,10 +54,6 @@ class Config:
     wandb_project: str | None = None
     wandb_name: str | None = None
 
-    use_stepwise_advantages: bool | None = None
-    normalize_advantages: bool = True
-    advantage_norm_eps: float = 1e-8
-
 
 def build_config(cli: Config) -> train.Config:
     renderer_name = cli.renderer_name or model_info.get_recommended_renderer_name(cli.model_name)
@@ -73,6 +62,12 @@ def build_config(cli: Config) -> train.Config:
         validate_reward_config(cli.reward_type, cli.reward_bins)
 
     prefix = "standard" if cli.use_standard_prefix else None
+
+    if cli.batch_size == 1 and cli.group_size == 1:
+        raise ValueError(
+            "batch_size=1 and group_size=1 produces a zero-advantage batch (no learning). "
+            "Use group_size>=2 (recommended) or batch_size>=2."
+        )
 
     if cli.env_type == "single_step":
         builder = SingleStepDatasetBuilder(
@@ -84,6 +79,7 @@ def build_config(cli: Config) -> train.Config:
             reward_type=cli.reward_type,
             reward_bins=cli.reward_bins,
             n_batches=cli.n_batches,
+            test_n_batches=cli.test_n_batches,
             fixed_secret=cli.fixed_secret,
             convo_prefix=prefix,
             seed=cli.dataset_seed,
@@ -96,6 +92,7 @@ def build_config(cli: Config) -> train.Config:
             model_name_for_tokenizer=cli.model_name,
             N=cli.N,
             n_batches=cli.n_batches,
+            test_n_batches=cli.test_n_batches,
             fixed_secret=cli.fixed_secret,
             convo_prefix=prefix,
             seed=cli.dataset_seed,
@@ -111,42 +108,7 @@ def build_config(cli: Config) -> train.Config:
     log_path = cli.log_path or f"/tmp/tinker-examples/memory_rl/{default_run_name}"
     wandb_name = cli.wandb_name or default_run_name
 
-    entropy_bits = math.log2(cli.N) if cli.N > 0 else 0.0
     num_bits = num_bits_for_space(cli.N)
-    if cli.env_type == "single_step":
-        if cli.reward_type == "binary":
-            algo_type = "rl_end_binary"
-            max_bits = 1.0
-        elif cli.reward_type == "log_distance":
-            algo_type = "rl_end_continuous"
-            max_bits = None
-        elif cli.reward_type == "binned_log_distance":
-            algo_type = "rl_end_binned"
-            max_bits = math.log2(cli.reward_bins) if cli.reward_bins else None
-        else:
-            algo_type = "rl_end_unknown"
-            max_bits = None
-    else:
-        algo_type = "rl_per_step"
-        max_bits = float(num_bits)
-
-    initial_metrics = {
-        "cfg/env_type": cli.env_type,
-        "algo/type": algo_type,
-        "cfg/reward_type": cli.reward_type,
-        "cfg/reward_bins": cli.reward_bins,
-        "cfg/log2_N": entropy_bits,
-        "cfg/num_bits": num_bits,
-        "signal/total_bits": entropy_bits,
-        "theory/max_bits_per_episode": max_bits,
-    }
-    initial_metrics = {k: v for k, v in initial_metrics.items() if v is not None}
-
-    use_stepwise_advantages = (
-        cli.use_stepwise_advantages
-        if cli.use_stepwise_advantages is not None
-        else (cli.env_type == "multi_step")
-    )
 
     evaluator_builders = []
     if cli.eval_bits:
@@ -167,21 +129,16 @@ def build_config(cli: Config) -> train.Config:
         lora_rank=cli.lora_rank,
         max_tokens=cli.max_tokens,
         eval_every=cli.eval_every,
-        eval_steps=cli.eval_steps,
         save_every=cli.save_every,
         loss_fn=cli.loss_fn,
         wandb_project=cli.wandb_project,
         wandb_name=wandb_name,
-        initial_metrics=initial_metrics,
         evaluator_builders=evaluator_builders,
-        use_stepwise_advantages=use_stepwise_advantages,
-        normalize_advantages=cli.normalize_advantages,
-        advantage_norm_eps=cli.advantage_norm_eps,
     )
 
 
-async def main():
-    cli = chz.entrypoint(Config)
+async def run(cli: Config) -> None:
+    """Run training with the given config. Called by xmux or CLI."""
     config = build_config(cli)
 
     entropy_bits = math.log2(cli.N) if cli.N > 0 else 0
@@ -204,6 +161,12 @@ async def main():
 
     cli_utils.check_log_dir(config.log_path, behavior_if_exists="resume")
     await train.main(config)
+
+
+async def main() -> None:
+    """CLI entrypoint."""
+    cli = chz.entrypoint(Config)
+    await run(cli)
 
 
 if __name__ == "__main__":

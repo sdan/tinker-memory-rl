@@ -141,8 +141,8 @@ def build_config(cli: Config) -> train.Config:
     )
 
 
-async def main() -> None:
-    cli = chz.entrypoint(Config)
+async def run(cli: Config) -> None:
+    """Run SFT training with the given config. Called by xmux or CLI."""
     config = build_config(cli)
 
     logger.info(f"SFT Memory Training: N={cli.N}, secret={cli.fixed_secret}")
@@ -152,6 +152,12 @@ async def main() -> None:
     Path(config.log_path).parent.mkdir(parents=True, exist_ok=True)
     cli_utils.check_log_dir(config.log_path, behavior_if_exists="resume")
     await train.main(config)
+
+
+async def main() -> None:
+    """CLI entrypoint."""
+    cli = chz.entrypoint(Config)
+    await run(cli)
 
 
 if __name__ == "__main__":
