@@ -15,7 +15,7 @@ from envs import (
     num_bits_for_space,
     validate_reward_config,
 )
-from eval import BitsKnownEvaluator
+from eval import BitsKnownEvaluator, InfoTheoryEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,18 @@ def build_config(cli: Config) -> train.Config:
     num_bits = num_bits_for_space(cli.N)
 
     evaluator_builders = []
+    evaluator_builders.append(
+        lambda env_type=cli.env_type,
+        N=cli.N,
+        reward_type=cli.reward_type,
+        reward_bins=cli.reward_bins: InfoTheoryEvaluator(
+            env_type=env_type,
+            N=N,
+            reward_type=reward_type,
+            reward_bins=reward_bins,
+            metric_prefix="theory",
+        )
+    )
     if cli.eval_bits:
         evaluator_builders.append(
             lambda builder=builder, env_type=cli.env_type: BitsKnownEvaluator(

@@ -198,7 +198,7 @@ def build_sweep_C(experiment_dir: str, wandb_project: str | None) -> list[JobSpe
                 group_size=GROUP_SIZE,
                 n_batches=NB_MULTI,
                 test_n_batches=TEST_N_BATCHES,
-                max_tokens=1,
+                max_tokens=2,
                 eval_every=EVAL_EVERY,
                 save_every=SAVE_EVERY,
                 log_path=log_dir,
