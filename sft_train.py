@@ -14,7 +14,7 @@ from tinker_cookbook.supervised import train
 from tinker_cookbook.supervised.data import FromConversationFileBuilder
 from tinker_cookbook.supervised.types import ChatDatasetBuilderCommonConfig
 
-from eval import BitsKnownEvaluator, InfoTheoryEvaluator
+from eval import BitsKnownEvaluator
 from envs import RewardType, SingleStepDatasetBuilder
 
 logger = logging.getLogger(__name__)
@@ -107,18 +107,6 @@ def build_config(cli: Config) -> train.Config:
     )
 
     evaluator_builders: list[EvaluatorBuilder] = []
-    evaluator_builders.append(
-        lambda env_type="single_step",
-        N=cli.N,
-        reward_type=cli.reward_type,
-        reward_bins=cli.reward_bins: InfoTheoryEvaluator(
-            env_type=env_type,
-            N=N,
-            reward_type=reward_type,
-            reward_bins=reward_bins,
-            metric_prefix="theory",
-        )
-    )
     evaluator_builders.append(
         lambda builder=env_dataset_builder: _LazyEnvEvaluator(
             dataset_builder=builder,

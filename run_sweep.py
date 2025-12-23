@@ -37,7 +37,7 @@ MULTI_STEP_CHECKPOINT = "tinker://1e79325e-97ad-5cfc-aae3-fdc7b5951746:train:0/w
 MODEL = "meta-llama/Llama-3.1-8B"
 SEEDS = [0, 1, 2]
 NS = [16, 64, 256, 1024, 4096]  # 5 points, log-spaced
-BS = [2, 4, 8, 16]  # added B=4 (2 bits)
+BS = [2, 4, 8, 16, 32]  # B=2 uses binary reward (1 bit); others use binned_log_distance
 GROUP_SIZE = 4
 
 # Fixed-point sweep defaults
@@ -51,7 +51,7 @@ LORA_RANK = 8
 LOSS_FN = "importance_sampling"
 EVAL_EVERY = 100
 SAVE_EVERY = 500
-TEST_N_BATCHES = 50
+TEST_N_BATCHES = 200
 
 NB_SINGLE = 20000  # n_batches for single-step
 NB_MULTI = 8000    # n_batches for multi-step

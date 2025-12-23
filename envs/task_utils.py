@@ -120,11 +120,11 @@ def compute_single_step_reward(
         validate_reward_config(reward_type, reward_bins)
         raw_reward = max(0.0, 1.0 - (math.log2(distance + 1) / max_bits))
         # Quantize to B bins in [0, 1], inclusive of endpoints.
-        assert reward_bins is not None
-        bin_index = int(round(raw_reward * (reward_bins - 1)))
-        base_reward = bin_index / float(reward_bins - 1)
+        # reward_bins is guaranteed non-None by validate_reward_config above
+        bin_index = int(round(raw_reward * (reward_bins - 1)))  # type: ignore[operator]
+        base_reward = bin_index / float(reward_bins - 1)  # type: ignore[arg-type]
     else:
-        base_reward = float(correct)
+        raise ValueError(f"Unknown reward_type: {reward_type}")
 
     return base_reward, correct, distance
 

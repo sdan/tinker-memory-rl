@@ -1,3 +1,4 @@
+import asyncio
 import math
 from typing import Literal
 
@@ -104,8 +105,6 @@ class BitsKnownEvaluator(SamplingClientEvaluator):
         return messages
 
     async def __call__(self, sampling_client: tinker.SamplingClient) -> dict[str, float]:
-        import asyncio
-
         dataset = await self._ensure_dataset()
         renderer = dataset.renderer
         N = dataset.N

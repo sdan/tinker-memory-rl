@@ -158,10 +158,12 @@ async def run(cli: Config) -> None:
     if cli.env_type == "single_step":
         if cli.reward_type == "binary":
             channel_desc = "binary (1 bit max)"
+        elif cli.reward_type == "log_distance":
+            channel_desc = "log_distance (continuous)"
         elif cli.reward_type == "binned_log_distance":
             channel_desc = f"binned_log_distance (B={cli.reward_bins})"
         else:
-            channel_desc = "continuous"
+            raise ValueError(f"Unknown reward_type: {cli.reward_type}")
     else:
         channel_desc = f"{num_bits} bits (1 per step)"
 
