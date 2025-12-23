@@ -36,8 +36,8 @@ MULTI_STEP_CHECKPOINT = "tinker://1e79325e-97ad-5cfc-aae3-fdc7b5951746:train:0/w
 # Sweep hyperparameters (match bash script defaults)
 MODEL = "meta-llama/Llama-3.1-8B"
 SEEDS = [0, 1, 2]
-NS = [64, 1024, 4096]
-BS = [2, 8, 16]
+NS = [16, 64, 256, 1024, 4096]  # 5 points, log-spaced
+BS = [2, 4, 8, 16]  # added B=4 (2 bits)
 GROUP_SIZE = 4
 
 # Fixed-point sweep defaults
@@ -85,12 +85,26 @@ def job_is_complete(log_dir: str) -> bool:
 
 
 def build_sweep_A(experiment_dir: str, wandb_project: str | None) -> list[JobSpec]:
-    """A) B sweep (scalar bandwidth) @ fixed N=1024."""
+    """A) B sweep (scalar bandwidth) @ fixed N=1024.
+
+    Uses binary reward for 1-bit channel (B=2) to avoid the forgiveness gap
+    where binned_log_distance(B=2) rewards guesses within sqrt(N) distance.
+    """
     jobs = []
     for seed in SEEDS:
         secret = secret_for(seed, N_BSWEEP)
         for B in BS:
-            name = f"A_bsweep_single_N{N_BSWEEP}_B{B}_s{seed}"
+            # B=2 binned gives reward for d <= sqrt(N)-1, which is 31x more forgiving
+            # than binary at N=1024. Use actual binary reward for fair 1-bit baseline.
+            if B == 2:
+                reward_type = "binary"
+                reward_bins = None
+                name = f"A_bsweep_single_N{N_BSWEEP}_binary_s{seed}"
+            else:
+                reward_type = "binned_log_distance"
+                reward_bins = B
+                name = f"A_bsweep_single_N{N_BSWEEP}_B{B}_s{seed}"
+
             log_dir = os.path.join(experiment_dir, name)
 
             if job_is_complete(log_dir):
@@ -103,8 +117,8 @@ def build_sweep_A(experiment_dir: str, wandb_project: str | None) -> list[JobSpe
                 load_checkpoint_path=SINGLE_STEP_CHECKPOINT,
                 N=N_BSWEEP,
                 fixed_secret=secret,
-                reward_type="binned_log_distance",
-                reward_bins=B,
+                reward_type=reward_type,
+                reward_bins=reward_bins,
                 loss_fn=LOSS_FN,
                 learning_rate=LR,
                 lora_rank=LORA_RANK,
