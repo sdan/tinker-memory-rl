@@ -23,7 +23,7 @@ Specifically for binary rewards we give 0/1 reward if it guesses the N-bit secre
 
 ## Measuring Learning
 
-We use teacher-forced evaluation: feed the model the correct answer and measure the probability it assigns. This is computed every 100 steps:
+We use teacher-forced evaluation: feed the model the correct answer and measure logprobs. This is computed every 100 steps:
 
 ```
 bits_known = log₂(N) + log P(S) / ln(2)
