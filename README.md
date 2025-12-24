@@ -19,22 +19,19 @@ We vary the **reward channel bandwidth**:
 | **Continuous** | raw log₁₀(distance + 1) | unbounded |
 | **Dense** | binary feedback per bit, k turns | log₂(N) bits/ep |
 
-Binary is the bottleneck case. Dense is the control—it reveals all log₂(N) bits across k turns.
+Specifically for binary rewards we give 0/1 reward if it guesses the N-bit secret correctly or not. For binned rewards we discretize the log-distance into B buckets e.g. B=8 → {0, 0.14, ..., 1.0}. For continuous rewards we give the raw log₁₀(distance + 1) reward. For dense rewards the environment is a bitstring e.g. "0101010101" and we give a binary reward per bit per turn.
 
 ## Measuring Learning
 
-The project spec asks: how do we track learning before full memorization?
-
-We use teacher-forced logprobs to measure how much the model "knows" about S:
+We use teacher-forced evaluation: feed the model the correct answer and measure the probability it assigns. This is computed every 100 steps:
 
 ```
 bits_known = log₂(N) + log P(S) / ln(2)
 ```
 
-- Uniform over [0, N): P(S) = 1/N → bits_known = 0
-- Memorized: P(S) = 1 → bits_known = log₂(N)
+- `bits_known ≈ 0` → model is guessing uniformly
+- `bits_known ≈ 10` → model has memorized the 10-bit secret
 
-This gives a smooth learning curve instead of step-function accuracy.
 
 ## Quick Start
 
@@ -54,6 +51,14 @@ python train.py env_type=multi_step N=64
 # Run full sweep (all conditions, 3 seeds each)
 python run_sweep.py --sequential
 ```
+
+Note: we include a warmup step where we train the model on the uniform distribution of random numbers for 1000 steps for both single-step and multi-step environments. This ensures the model is in the correct format—we intentionally don't include a formatting reward in the training loop. Here are checkpoints to skip warmup:
+
+```
+SINGLE_STEP_CHECKPOINT = "tinker://61ffdf2c-c9ae-52f1-8b0a-d5757c68bee8:train:0/weights/final"
+MULTI_STEP_CHECKPOINT = "tinker://1e79325e-97ad-5cfc-aae3-fdc7b5951746:train:0/weights/final"
+```
+
 
 ## References
 
