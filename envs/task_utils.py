@@ -53,27 +53,38 @@ def build_multi_step_user_prompt(position: int, num_bits: int) -> str:
     return f"Provide bit #{position + 1}. Remaining bits after this: {remaining}."
 
 
-def parse_single_step_guess(sample_str: str, N: int) -> int | None:
+def parse_single_step_guess(sample_str: str, N: int, strict: bool = True) -> int | None:
     """
     Parse the model's guess from its response.
 
-    Relaxed parsing: extracts first sequence of digits from the response,
-    allowing formats like "42", "Answer: 42", "The number is 42", etc.
+    Args:
+        sample_str: Model's raw output
+        N: Upper bound (exclusive) for valid guesses
+        strict: If True, only accept clean numeric output (digits only, optional trailing whitespace).
+                If False, extract first digit sequence (lenient).
     """
     stripped = sample_str.strip()
     if not stripped:
         return None
 
-    # Extract first contiguous digit sequence from the first line
-    first_line = stripped.split('\n')[0]
-    digits = re.search(r'\d+', first_line)
-    if not digits:
-        return None
-
-    try:
-        guess = int(digits.group())
-    except ValueError:
-        return None
+    if strict:
+        # Strict: must be only digits (no periods, spaces, repeated numbers)
+        if not stripped.isdigit():
+            return None
+        try:
+            guess = int(stripped)
+        except ValueError:
+            return None
+    else:
+        # Lenient: extract first contiguous digit sequence from the first line
+        first_line = stripped.split('\n')[0]
+        digits = re.search(r'\d+', first_line)
+        if not digits:
+            return None
+        try:
+            guess = int(digits.group())
+        except ValueError:
+            return None
 
     return guess if 0 <= guess < N else None
 
